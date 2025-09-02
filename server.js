@@ -24,7 +24,11 @@ io.on("connection", (socket) => {
   socket.broadcast.emit("hello", `${socket.id} joined the server`);
 
   socket.on("message", (data) => {
-    io.emit("re-message", data);
+    socket.broadcast.emit("re-message", data);
+  });
+
+  socket.on("typing", (data) => {
+    socket.broadcast.emit("typing", data);
   });
 
   // user discounnected
