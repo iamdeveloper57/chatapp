@@ -1,42 +1,79 @@
 import express from "express";
+import http from "http";
 import { Server } from "socket.io";
-import { createServer } from "http";
+import dotenv from "dotenv";
 import cors from "cors";
+import connectDB from "./config/db.js";
+import authRoutes from "./routes/auth.js";
+import messageRoutes from "./routes/messages.js";
+import { authSocket } from "./middleware/auth.js";
 
+dotenv.config();
 const app = express();
-const server = createServer(app);
+const server = http.createServer(app);
 
-app.use(cors());
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
+  cors: { origin: "http://localhost:5173", credentials: true },
 });
 
-app.get("/", (req, res) => {
-  res.send("hello from server");
-});
+connectDB();
+app.use(cors());
+app.use(express.json());
+
+// Routes
+app.use("/api/auth", authRoutes);
+app.use("/api/messages", messageRoutes);
+
+// Online users map
+const onlineUsers = new Map();
+
+// Socket.IO middleware
+io.use(authSocket);
 
 io.on("connection", (socket) => {
-  console.log("user connected", socket.id);
-  socket.emit("hello", "hello from server!");
-  socket.broadcast.emit("hello", `${socket.id} joined the server`);
+  if (!socket.user) {
+    console.error("⚠️ No user on socket");
+    return socket.disconnect();
+  }
 
-  socket.on("message", (data) => {
-    socket.broadcast.emit("re-message", data);
-  });
+  console.log("⚡ Connected:", socket.user.id);
+  onlineUsers.set(socket.user.id, socket.id);
 
-  socket.on("typing", (data) => {
-    socket.broadcast.emit("typing", data);
-  });
+  // Notify others user is online
+  io.emit("onlineUsers", [...onlineUsers.keys()]);
 
-  // user discounnected
+  // Join personal room (like WhatsApp)
+  socket.join(socket.user.id);
+
+  // Private message
+  // socket.on("privateMessage", ({ to, message }) => {
+  //   const receiverSocketId = onlineUsers.get(to);
+  //   if (receiverSocketId) {
+  //     io.to(receiverSocketId).emit("privateMessage", {
+  //       from: socket.user.id,
+  //       message,
+  //     });
+  //   }
+  // });
+
+  // Example backend socket
+socket.on("privateMessage", (msg) => {
+  const receiverSocketId = onlineUsers.get(msg.receiver.toString());
+  const senderSocketId = onlineUsers.get(msg.sender.toString());
+
+  if (receiverSocketId) io.to(receiverSocketId).emit("privateMessage", msg);
+  if (senderSocketId) io.to(senderSocketId).emit("privateMessage", msg); // make sender also receive it
+});
+
+
   socket.on("disconnect", () => {
-    console.log("user Disconected", socket.id);
+    console.log("❌ Disconnected:", socket.user.id);
+    onlineUsers.delete(socket.user.id);
+    io.emit("onlineUsers", [...onlineUsers.keys()]);
   });
 });
 
-server.listen(4000, () => {
-  console.log("server connected");
-});
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
+export { io };
