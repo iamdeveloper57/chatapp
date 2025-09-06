@@ -57,14 +57,48 @@ io.on("connection", (socket) => {
   // });
 
   // Example backend socket
-socket.on("privateMessage", (msg) => {
-  const receiverSocketId = onlineUsers.get(msg.receiver.toString());
-  const senderSocketId = onlineUsers.get(msg.sender.toString());
+  socket.on("privateMessage", (msg) => {
+    const receiverSocketId = onlineUsers.get(msg.receiver.toString());
+    const senderSocketId = onlineUsers.get(msg.sender.toString());
 
-  if (receiverSocketId) io.to(receiverSocketId).emit("privateMessage", msg);
-  if (senderSocketId) io.to(senderSocketId).emit("privateMessage", msg); // make sender also receive it
-});
+    if (receiverSocketId) io.to(receiverSocketId).emit("privateMessage", msg);
+    if (senderSocketId) io.to(senderSocketId).emit("privateMessage", msg); // make sender also receive it
+  });
 
+  // Initiate a call
+  socket.on("call-user", ({ to, offer }) => {
+    const receiverSocketId = onlineUsers.get(to);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("call-made", {
+        from: socket.user.id,
+        offer,
+      });
+    }
+  });
+
+  // Answer a call
+  socket.on("make-answer", ({ to, answer }) => {
+    const receiverSocketId = onlineUsers.get(to);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("answer-made", { answer });
+    }
+  });
+
+  // ICE candidates
+  socket.on("ice-candidate", ({ to, candidate }) => {
+    const receiverSocketId = onlineUsers.get(to);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("ice-candidate", { candidate });
+    }
+  });
+
+  // End call
+  socket.on("end-call", ({ to }) => {
+    const receiverSocketId = onlineUsers.get(to);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("end-call");
+    }
+  });
 
   socket.on("disconnect", () => {
     console.log("❌ Disconnected:", socket.user.id);
